@@ -1,0 +1,45 @@
+name: Build CrateChop (Mac)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stahnout DPF framework
+        run: |
+          git clone --recursive https://github.com/DISTRHO/DPF.git dpf
+          cd dpf && git checkout 4238e1c7f0351bbe488d79f0899c540543ac7583 && git submodule update --init --recursive
+
+      - name: Kompilace (Intel + Apple Silicon)
+        run: |
+          mkdir -p dpf/plugins/CrateChop
+          cp source/* dpf/plugins/CrateChop/
+          export CFLAGS="-arch x86_64 -arch arm64 -mmacosx-version-min=10.15"
+          export CXXFLAGS="$CFLAGS"
+          export LDFLAGS="-arch x86_64 -arch arm64 -mmacosx-version-min=10.15"
+          make -C dpf/dgl opengl -j4
+          make -C dpf/plugins/CrateChop -j4
+          ls -la dpf/bin
+
+      - name: Podpis a zabaleni
+        run: |
+          mkdir -p out/CrateChop-mac
+          cd dpf/bin
+          for p in CrateChop.vst3 CrateChop.component CrateChop.clap; do
+            if [ -e "$p" ]; then
+              codesign --force --deep -s - "$p"
+              cp -R "$p" ../../out/CrateChop-mac/
+            fi
+          done
+          cd ../../out
+          ditto -c -k --keepParent CrateChop-mac CrateChop-mac.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CrateChop-mac
+          path: out/CrateChop-mac.zip
